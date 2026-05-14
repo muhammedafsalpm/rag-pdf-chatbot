@@ -15,11 +15,10 @@ class VectorStore:
         os.makedirs(Config.VECTOR_DB_PATH, exist_ok=True)
         
         try:
-            self.client = chromadb.Client(Settings(
-                chroma_db_impl="duckdb+parquet",
-                persist_directory=Config.VECTOR_DB_PATH,
-                anonymized_telemetry=False
-            ))
+            # Modern ChromaDB (0.4+) uses PersistentClient for local storage
+            self.client = chromadb.PersistentClient(
+                path=Config.VECTOR_DB_PATH
+            )
             
             # Get or create collection
             self.collection = self.client.get_or_create_collection(

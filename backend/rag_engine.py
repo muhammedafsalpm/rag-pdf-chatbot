@@ -57,7 +57,7 @@ ANSWER:"""
         
         if self.provider == "openai":
             try:
-                response = openai.ChatCompletion.create(
+                response = openai.chat.completions.create(
                     model=self.model,
                     messages=[
                         {"role": "system", "content": "You are a precise document QA assistant."},

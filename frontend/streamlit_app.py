@@ -31,7 +31,7 @@ with st.sidebar:
     if uploaded_file:
         if st.button("Process PDF", type="primary"):
             with st.spinner("Processing PDF... This may take a moment..."):
-                files = {"file": uploaded_file}
+                files = {"file": (uploaded_file.name, uploaded_file.getvalue(), "application/pdf")}
                 try:
                     response = requests.post(f"{API_BASE_URL}/upload", files=files, timeout=120)
                     

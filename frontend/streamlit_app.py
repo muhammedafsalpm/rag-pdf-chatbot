@@ -19,12 +19,12 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("📚 PDF RAG Assistant with Citations")
+st.title("PDF RAG Assistant with Citations")
 st.markdown("Ask questions about your PDF documents and get grounded answers with source citations")
 
 # Sidebar
 with st.sidebar:
-    st.header("📄 Upload Document")
+    st.header("Upload Document")
     
     uploaded_file = st.file_uploader("Choose a PDF file", type="pdf")
     

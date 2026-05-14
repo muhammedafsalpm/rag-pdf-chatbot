@@ -15,11 +15,7 @@
 
 ### 1. Fix Dependencies (CRITICAL)
 ```bash
-# Uninstall conflicting packages
-pip uninstall sentence-transformers huggingface-hub chromadb langchain -y
-
-# Install fresh
-cd backend
+# From the root directory
 pip install -r requirements.txt
 ```
 

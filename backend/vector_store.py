@@ -14,25 +14,34 @@ class VectorStore:
         # Create storage directory if not exists
         os.makedirs(Config.VECTOR_DB_PATH, exist_ok=True)
         
-        self.client = chromadb.Client(Settings(
-            chroma_db_impl="duckdb+parquet",
-            persist_directory=Config.VECTOR_DB_PATH,
-            anonymized_telemetry=False
-        ))
-        
-        # Get or create collection
-        self.collection = self.client.get_or_create_collection(
-            name="pdf_documents",
-            metadata={"hnsw:space": "cosine"}
-        )
+        try:
+            self.client = chromadb.Client(Settings(
+                chroma_db_impl="duckdb+parquet",
+                persist_directory=Config.VECTOR_DB_PATH,
+                anonymized_telemetry=False
+            ))
+            
+            # Get or create collection
+            self.collection = self.client.get_or_create_collection(
+                name="pdf_documents",
+                metadata={"hnsw:space": "cosine"}
+            )
+            print("Vector store initialized successfully")
+        except Exception as e:
+            print(f"Error initializing vector store: {e}")
+            raise
     
     def add_documents(self, chunks: List[Dict]) -> int:
         """Add chunks to vector store"""
+        if not chunks:
+            return 0
+            
         ids = [str(uuid.uuid4()) for _ in chunks]
         texts = [chunk['text'] for chunk in chunks]
         metadatas = [chunk['metadata'] for chunk in chunks]
         
         # Generate embeddings
+        print(f"Generating embeddings for {len(chunks)} chunks...")
         embeddings = self.embedding_model.embed_documents(texts)
         
         # Add to Chroma
@@ -50,25 +59,33 @@ class VectorStore:
         if k is None:
             k = Config.TOP_K_RESULTS
         
-        query_embedding = self.embedding_model.embed_query(query)
-        
-        results = self.collection.query(
-            query_embeddings=[query_embedding],
-            n_results=k,
-            include=["documents", "metadatas", "distances"]
-        )
-        
-        retrieved = []
-        for doc, meta, dist in zip(
-            results['documents'][0],
-            results['metadatas'][0],
-            results['distances'][0]
-        ):
-            retrieved.append((doc, meta, dist))
-        
-        return retrieved
+        try:
+            query_embedding = self.embedding_model.embed_query(query)
+            
+            results = self.collection.query(
+                query_embeddings=[query_embedding],
+                n_results=k,
+                include=["documents", "metadatas", "distances"]
+            )
+            
+            retrieved = []
+            if results['documents'] and results['documents'][0]:
+                for doc, meta, dist in zip(
+                    results['documents'][0],
+                    results['metadatas'][0],
+                    results['distances'][0]
+                ):
+                    retrieved.append((doc, meta, dist))
+            
+            return retrieved
+        except Exception as e:
+            print(f"Search error: {e}")
+            return []
     
     def clear_all(self):
         """Clear all documents"""
-        self.client.delete_collection("pdf_documents")
-        self.collection = self.client.create_collection("pdf_documents")
+        try:
+            self.client.delete_collection("pdf_documents")
+            self.collection = self.client.create_collection("pdf_documents")
+        except:
+            pass

@@ -1,6 +1,7 @@
 from typing import List, Dict, Tuple
 import openai
-import ollama
+import requests
+import json
 from config import Config
 
 class RAGEngine:
@@ -12,9 +13,11 @@ class RAGEngine:
         if self.provider == "openai":
             openai.api_key = Config.OPENAI_API_KEY
             self.model = Config.OPENAI_MODEL
-        else:  # ollama
+            print(f"Using OpenAI with model: {self.model}")
+        else:
             self.model = Config.OLLAMA_MODEL
-            ollama_client = ollama.Client(host=Config.OLLAMA_BASE_URL)
+            self.ollama_url = Config.OLLAMA_BASE_URL
+            print(f"Using Ollama with model: {self.model} at {self.ollama_url}")
     
     def create_prompt(self, question: str, context_chunks: List, chat_history: List = None) -> str:
         """Create prompt with context and history"""
@@ -26,7 +29,7 @@ class RAGEngine:
         
         # Format chat history
         history_text = ""
-        if chat_history:
+        if chat_history and len(chat_history) > 0:
             history_text = "Previous conversation:\n"
             for msg in chat_history[-6:]:  # Last 3 exchanges
                 history_text += f"User: {msg['user']}\nAssistant: {msg['assistant']}\n\n"
@@ -53,27 +56,42 @@ ANSWER:"""
         """Generate answer using configured LLM"""
         
         if self.provider == "openai":
-            response = openai.ChatCompletion.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": "You are a precise document QA assistant."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.3,
-                max_tokens=500
-            )
-            return response.choices[0].message.content
+            try:
+                response = openai.ChatCompletion.create(
+                    model=self.model,
+                    messages=[
+                        {"role": "system", "content": "You are a precise document QA assistant."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.3,
+                    max_tokens=500
+                )
+                return response.choices[0].message.content
+            except Exception as e:
+                return f"Error with OpenAI: {str(e)}"
         
         else:  # ollama
-            response = ollama.chat(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": "You are a precise document QA assistant."},
-                    {"role": "user", "content": prompt}
-                ],
-                options={
-                    "temperature": 0.3,
-                    "num_predict": 500
-                }
-            )
-            return response['message']['content']
+            try:
+                response = requests.post(
+                    f"{self.ollama_url}/api/generate",
+                    json={
+                        "model": self.model,
+                        "prompt": prompt,
+                        "stream": False,
+                        "options": {
+                            "temperature": 0.3,
+                            "num_predict": 500
+                        }
+                    },
+                    timeout=60
+                )
+                
+                if response.status_code == 200:
+                    result = response.json()
+                    return result.get('response', 'No response generated')
+                else:
+                    return f"Ollama error: {response.status_code} - Make sure Ollama is running with 'ollama serve'"
+            except requests.exceptions.ConnectionError:
+                return "Cannot connect to Ollama. Please run 'ollama serve' in terminal"
+            except Exception as e:
+                return f"Error with Ollama: {str(e)}"

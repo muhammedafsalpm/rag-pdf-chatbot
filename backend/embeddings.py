@@ -1,14 +1,15 @@
 from sentence_transformers import SentenceTransformer
 from typing import List
-import numpy as np
 from config import Config
 
 class EmbeddingModel:
     """BGE embedding model - production ready"""
     
     def __init__(self):
+        print(f"Loading embedding model: {Config.EMBEDDING_MODEL}")
         self.model = SentenceTransformer(Config.EMBEDDING_MODEL)
         self.dimension = Config.EMBEDDING_DIMENSION
+        print(f"Embedding model loaded successfully")
     
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
         """Embed multiple documents"""

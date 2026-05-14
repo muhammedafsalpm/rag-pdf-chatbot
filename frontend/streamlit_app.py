@@ -1,7 +1,6 @@
 import streamlit as st
 import requests
 import uuid
-from datetime import datetime
 
 # API Configuration
 API_BASE_URL = "http://localhost:8000"
@@ -14,14 +13,12 @@ if 'messages' not in st.session_state:
 if 'pdf_processed' not in st.session_state:
     st.session_state.pdf_processed = False
 
-# Page config
 st.set_page_config(
     page_title="PDF RAG Assistant",
     page_icon="📚",
     layout="wide"
 )
 
-# Title
 st.title("📚 PDF RAG Assistant with Citations")
 st.markdown("Ask questions about your PDF documents and get grounded answers with source citations")
 
@@ -32,92 +29,121 @@ with st.sidebar:
     uploaded_file = st.file_uploader("Choose a PDF file", type="pdf")
     
     if uploaded_file:
-        if st.button("Process PDF"):
-            with st.spinner("Processing PDF..."):
+        if st.button("Process PDF", type="primary"):
+            with st.spinner("Processing PDF... This may take a moment..."):
                 files = {"file": uploaded_file}
-                response = requests.post(f"{API_BASE_URL}/upload", files=files)
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    st.success(f"✅ Processed: {data['pages']} pages, {data['chunks']} chunks")
-                    st.session_state.pdf_processed = True
-                else:
-                    st.error(f"Error: {response.json()}")
+                try:
+                    response = requests.post(f"{API_BASE_URL}/upload", files=files, timeout=120)
+                    
+                    if response.status_code == 200:
+                        data = response.json()
+                        st.success(f"✅ Processed: {data['pages']} pages, {data['chunks']} chunks")
+                        st.session_state.pdf_processed = True
+                    else:
+                        st.error(f"Error: {response.json().get('detail', 'Unknown error')}")
+                except requests.exceptions.ConnectionError:
+                    st.error("Cannot connect to backend. Make sure backend is running on port 8000")
+                except Exception as e:
+                    st.error(f"Error: {str(e)}")
     
     st.divider()
     
-    if st.button("🗑️ Clear Chat History"):
-        requests.post(f"{API_BASE_URL}/clear", params={"session_id": st.session_state.session_id})
-        st.session_state.messages = []
-        st.rerun()
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("🗑️ Clear Chat"):
+            try:
+                requests.post(f"{API_BASE_URL}/clear", params={"session_id": st.session_state.session_id})
+            except:
+                pass
+            st.session_state.messages = []
+            st.rerun()
     
-    if st.button("🗑️ Clear All Data"):
-        requests.post(f"{API_BASE_URL}/clear_all")
-        st.session_state.messages = []
-        st.session_state.pdf_processed = False
-        st.rerun()
+    with col2:
+        if st.button("🗑️ Clear All"):
+            try:
+                requests.post(f"{API_BASE_URL}/clear_all")
+            except:
+                pass
+            st.session_state.messages = []
+            st.session_state.pdf_processed = False
+            st.rerun()
     
     st.divider()
-    st.info(f"""
-    **Status:**
-    - LLM Provider: {requests.get(f"{API_BASE_URL}/health").json().get('llm_provider', 'unknown') if st.session_state.pdf_processed else 'Not connected'}
-    - Session ID: {st.session_state.session_id[:8]}...
-    - Messages: {len(st.session_state.messages)}
-    """)
+    
+    # Status display
+    try:
+        health = requests.get(f"{API_BASE_URL}/health", timeout=5)
+        if health.status_code == 200:
+            data = health.json()
+            st.info(f"""
+            **Status:** ✅ Connected
+            **LLM:** {data['llm_provider']}
+            **Model:** {data['model']}
+            **Session:** {st.session_state.session_id[:8]}...
+            **Messages:** {len(st.session_state.messages)}
+            """)
+        else:
+            st.warning("⚠️ Backend not responding")
+    except:
+        st.error("❌ Backend not reachable")
 
 # Main chat interface
-chat_container = st.container()
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+        if "citations" in message and message["citations"]:
+            st.caption(f"📌 Sources: {', '.join(message['citations'])}")
 
-with chat_container:
-    # Display chat history
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
-            if "citations" in message and message["citations"]:
-                st.caption(f"📌 Sources: {', '.join(message['citations'])}")
+# Chat input
+if prompt := st.chat_input("Ask a question about your PDF..."):
+    # Add user message
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.markdown(prompt)
     
-    # Chat input
-    if prompt := st.chat_input("Ask a question about your PDF..."):
-        # Add user message
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
-        
-        # Check if PDF is processed
-        if not st.session_state.pdf_processed:
-            with st.chat_message("assistant"):
-                error_msg = "Please upload and process a PDF first."
-                st.error(error_msg)
-                st.session_state.messages.append({"role": "assistant", "content": error_msg})
-        else:
-            # Get answer from backend
-            with st.chat_message("assistant"):
-                with st.spinner("Retrieving information..."):
-                    try:
-                        response = requests.post(
-                            f"{API_BASE_URL}/ask",
-                            json={
-                                "question": prompt,
-                                "session_id": st.session_state.session_id
-                            }
-                        )
-                        
-                        if response.status_code == 200:
-                            data = response.json()
-                            
-                            # Display answer
-                            st.markdown(data["answer"])
-                            if data["citations"]:
-                                st.caption(f"📌 Sources: {', '.join(data['citations'])}")
-                            
-                            # Add to history
-                            st.session_state.messages.append({
-                                "role": "assistant",
-                                "content": data["answer"],
-                                "citations": data["citations"]
-                            })
-                        else:
-                            st.error("Error getting response")
+    if not st.session_state.pdf_processed:
+        with st.chat_message("assistant"):
+            error_msg = "⚠️ Please upload and process a PDF first using the sidebar."
+            st.error(error_msg)
+            st.session_state.messages.append({"role": "assistant", "content": error_msg})
+    else:
+        with st.chat_message("assistant"):
+            with st.spinner("🔍 Searching document and generating answer..."):
+                try:
+                    response = requests.post(
+                        f"{API_BASE_URL}/ask",
+                        json={
+                            "question": prompt,
+                            "session_id": st.session_state.session_id
+                        },
+                        timeout=60
+                    )
                     
-                    except requests.exceptions.ConnectionError:
-                        st.error("Cannot connect to backend. Make sure backend is running on port 8000")
+                    if response.status_code == 200:
+                        data = response.json()
+                        st.markdown(data["answer"])
+                        if data["citations"]:
+                            st.caption(f"📌 Sources: {', '.join(data['citations'])}")
+                        
+                        st.session_state.messages.append({
+                            "role": "assistant",
+                            "content": data["answer"],
+                            "citations": data["citations"]
+                        })
+                    else:
+                        error_msg = f"Error: {response.json().get('detail', 'Unknown error')}"
+                        st.error(error_msg)
+                        st.session_state.messages.append({"role": "assistant", "content": error_msg})
+                
+                except requests.exceptions.Timeout:
+                    error_msg = "Request timed out. The document might be large or the LLM is slow."
+                    st.error(error_msg)
+                    st.session_state.messages.append({"role": "assistant", "content": error_msg})
+                except requests.exceptions.ConnectionError:
+                    error_msg = "Cannot connect to backend. Make sure backend is running on port 8000"
+                    st.error(error_msg)
+                    st.session_state.messages.append({"role": "assistant", "content": error_msg})
+                except Exception as e:
+                    error_msg = f"Error: {str(e)}"
+                    st.error(error_msg)
+                    st.session_state.messages.append({"role": "assistant", "content": error_msg})

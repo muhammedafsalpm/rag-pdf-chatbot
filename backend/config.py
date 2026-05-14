@@ -9,15 +9,15 @@ class Config:
     
     # OpenAI Config
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-    OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+    OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
     
     # Ollama Config
     OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-    OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2")
+    OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama2")
     
-    # Embedding Config
-    EMBEDDING_MODEL = "BAAI/bge-large-en-v1.5"
-    EMBEDDING_DIMENSION = 1024
+    # Embedding Config - Using smaller model for compatibility
+    EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"  # Smaller, faster, still good
+    EMBEDDING_DIMENSION = 384
     
     # Chunking Config
     CHUNK_SIZE = 1000

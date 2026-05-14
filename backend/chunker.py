@@ -18,17 +18,21 @@ class DocumentChunker:
         chunks = []
         
         for page in pages:
+            if not page['text']:
+                continue
+                
             # Split page text into chunks
             chunk_texts = self.splitter.split_text(page['text'])
             
             for chunk_id, chunk_text in enumerate(chunk_texts):
-                chunks.append({
-                    'text': chunk_text,
-                    'metadata': {
-                        'page': page['page_number'],
-                        'chunk_id': chunk_id,
-                        'citation': f"Page {page['page_number']}"
-                    }
-                })
+                if chunk_text.strip():  # Only add non-empty chunks
+                    chunks.append({
+                        'text': chunk_text,
+                        'metadata': {
+                            'page': page['page_number'],
+                            'chunk_id': chunk_id,
+                            'citation': f"Page {page['page_number']}"
+                        }
+                    })
         
         return chunks

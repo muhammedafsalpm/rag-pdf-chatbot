@@ -23,13 +23,15 @@ app.add_middleware(
 )
 
 # Initialize components
+print("Initializing RAG System...")
 embedding_model = EmbeddingModel()
 vector_store = VectorStore(embedding_model)
 rag_engine = RAGEngine()
 pdf_processor = PDFProcessor()
 chunker = DocumentChunker()
+print("RAG System Ready!")
 
-# In-memory chat history storage (per session)
+# In-memory chat history storage
 chat_sessions = {}
 
 class QuestionRequest(BaseModel):
@@ -43,7 +45,11 @@ class ChatResponse(BaseModel):
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "llm_provider": rag_engine.provider}
+    return {
+        "status": "healthy", 
+        "llm_provider": rag_engine.provider,
+        "model": rag_engine.model
+    }
 
 @app.post("/upload")
 async def upload_pdf(file: UploadFile = File(...)):
@@ -52,9 +58,11 @@ async def upload_pdf(file: UploadFile = File(...)):
         raise HTTPException(400, "Only PDF files allowed")
     
     try:
+        # Read file content
+        content = await file.read()
+        
         # Save temporarily
         with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
-            content = await file.read()
             tmp_file.write(content)
             tmp_path = tmp_file.name
         
@@ -62,8 +70,14 @@ async def upload_pdf(file: UploadFile = File(...)):
         with open(tmp_path, 'rb') as f:
             pages = pdf_processor.extract_pages(f)
         
+        if not pages:
+            raise HTTPException(400, "No text extracted from PDF")
+        
         # Create chunks
         chunks = chunker.create_chunks(pages)
+        
+        if not chunks:
+            raise HTTPException(400, "No chunks created from PDF")
         
         # Add to vector store
         num_chunks = vector_store.add_documents(chunks)
@@ -78,7 +92,10 @@ async def upload_pdf(file: UploadFile = File(...)):
             "chunks": num_chunks
         }
     
+    except HTTPException:
+        raise
     except Exception as e:
+        print(f"Processing error: {str(e)}")
         raise HTTPException(500, f"Processing failed: {str(e)}")
 
 @app.post("/ask", response_model=ChatResponse)
@@ -90,7 +107,7 @@ async def ask_question(request: QuestionRequest):
     
     if not retrieved_chunks:
         return ChatResponse(
-            answer="No documents uploaded. Please upload a PDF first.",
+            answer="No documents uploaded or no relevant content found. Please upload a PDF first.",
             citations=[],
             sources=[]
         )
@@ -123,7 +140,7 @@ async def ask_question(request: QuestionRequest):
         chat_sessions[request.session_id] = chat_sessions[request.session_id][-10:]
     
     sources = [
-        {"page": meta['page'], "citation": meta['citation'], "relevance_score": score}
+        {"page": meta['page'], "citation": meta['citation'], "relevance_score": float(score)}
         for _, meta, score in retrieved_chunks
     ]
     
@@ -149,4 +166,4 @@ async def clear_all():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8000, reload=False)
